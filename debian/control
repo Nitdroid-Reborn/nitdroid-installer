@@ -1,0 +1,16 @@
+Source: nitdroid-installer
+Section: user/system
+Priority: extra
+Maintainer: Jay Cartman <jay.cartman@gmail.com>
+Build-Depends: debhelper (>= 5)
+Standards-Version: 3.7.2
+
+Package: nitdroid-installer
+Architecture: armel
+Depends: wget, bzip2
+Conflicts: bootmenu, bootmenu-n900
+Description: Install NITDroid, an Android port to N900
+ This package is an installer program for downloading 
+ and installing NITDroid, an Android port to N900.
+XB-Maemo-Display-Name: NITDroid installer
+XB-Maemo-Flags: system-update

@@ -1,0 +1,579 @@
+#!/bin/sh
+#
+# nitdroid-installer	Install NITDroid, an Android port to N900
+#
+#	Copyright (c) 2010  Jay Cartman <jay.cartman@gmail.com>
+#
+
+## Config
+
+# Version
+VER=0.2.0
+
+# Nitdroid manifest file
+MANIFEST=nitdroid_manifest.nit
+MANIFEST_URL=http://repo.nitdroid.com/${MANIFEST}
+
+# Filesystem options
+ANDOPTS='rw,noatime,errors=remount-ro'
+DOSOPTS='rw,noauto,nodev,noexec,nosuid,noatime,nodiratime,utf8,uid=29999,shortname=mixed,dmask=000,fmask=0133,rodir'
+
+# Package storage
+PKGDIR='/home/user/MyDocs/.nitdroid'
+
+# APT source list
+APT_LIST='/etc/apt/sources.list.d/nitdroid-installer.list'
+
+# Extra packages
+EXTRA_PKGS='bzip2 wget nano'
+
+# Verbose log file
+LOG_FILE='/root/nitdroid-installer.log'
+
+
+## Logging Functions
+
+INIT()
+{
+	exec 5>$LOG_FILE
+	echo -e "\n*** NITDroid installer ${VER} on $(date)\n" >&5
+}
+
+DONE()
+{
+	exec 5>&-
+	exit 0
+}
+
+ERROR()
+{
+	echo "*** ERROR - CLEANING UP THE CRAP" >&5
+
+	exec 5>&-
+
+	quiet umount /and
+	quiet umount /mmc
+
+	quiet dpkg -r multiboot
+
+	quiet resume_process ke-recv
+
+	rm -f ${APT_LIST}
+
+	exit 1
+}
+
+FAIL()
+{
+	echo "!!! FAILURE ($?) [$@]" >&5
+	echo "FAILURE. Bailing out."
+	ERROR
+}
+
+LOG()
+{
+	echo "=== $@" >&5
+	echo -e "$@"
+}
+
+MSG()
+{
+	echo "*** $@" >&5
+	echo -n -e "$@" "..."
+}
+
+END()
+{
+	echo "*** DONE" >&5
+	echo "done"
+}
+
+RUN()
+{
+	eval "$@" >&5 2>&5
+}
+
+safe()
+{
+	echo "--- RUN [$@]" >&5
+	RUN "$@" || FAIL "$@"
+}
+
+quiet()
+{
+	eval "$@" >/dev/null 2>/dev/null
+}
+
+
+## Utility functions
+
+suspend_process()
+{
+	PID=$(pidof $1)
+	if [ -f /proc/$PID/status ]
+	then
+		kill -STOP $PID
+	fi
+}
+
+
+resume_process()
+{
+	PID=$(pidof $1)
+	if [ -f /proc/$PID/status ]
+	then
+		kill -CONT $PID
+	fi
+}
+
+
+## Uninstall functions
+
+init_fake_and()
+{
+	safe install -d -m 0700 /and
+	safe mount -t tmpfs -o rw,nosuid,noatime,size=256k,mode=755 tmpfs /and
+	safe install -d /and/system/etc
+}
+
+done_fake_and()
+{
+	safe umount /and
+}
+
+
+uninstall_crap()
+{
+	MSG "Uninstalling any incompatible software"
+	  safe dpkg --purge bootmenu
+	  safe dpkg --purge bootmenu-n900
+	END
+
+	## Remove old kernels
+
+	init_fake_and
+
+	for list in /var/lib/dpkg/info/nitdroid-kernel-*.list
+	do
+		if [ -f $list ]
+		then
+			pkg=${list##*/nitdroid-kernel-}
+			ver=${pkg%%.list}
+
+			MSG "Uninstalling kernel $ver"
+			  safe dpkg --purge nitdroid-kernel-$ver
+			END
+        	fi
+	done
+
+	## Remove manual kernels
+
+	for mod in /lib/modules/2.6.28.NIT.*
+	do
+		if [ -d $mod ]
+		then
+			ver=${mod##*/}
+
+                	MSG "Removing manual kernel $ver"
+			  rm -f /boot/vmlinuz-$ver 
+                	  rm -f /boot/multiboot/vmlinuz-$ver
+                	  rm -f -r $mod
+			END
+		fi
+        done
+
+	## Remove multiboot
+
+	MSG "Removing multiboot"
+	  safe dpkg --purge multiboot-kernel-maemo
+	  safe dpkg --purge multiboot-kernel-power
+	  safe dpkg --purge multiboot
+	  safe dpkg --purge multiboot-extras
+	END
+
+	MSG "Removing lingering files"
+	  safe rm -f /etc/multiboot.d/*.item
+	  safe rm -f /sbin/multiboot[._]* /sbin/preinit[._]*
+	END
+
+	done_fake_and
+}
+
+
+## Maemo repo functions
+
+install_repos()
+{
+	echo "deb http://repository.maemo.org/extras/ fremantle free non-free" > $APT_LIST
+	echo "deb http://repository.maemo.org/extras-devel/ fremantle free non-free" >> $APT_LIST
+	echo "deb http://repository.maemo.org/extras-testing/ fremantle free non-free" >> $APT_LIST
+
+	safe apt-get update
+}
+
+
+delete_repos()
+{
+	rm -f $APT_LIST
+}
+
+
+install_extras()
+{
+	MSG "Installing Maemo extras"
+	  install_repos
+	  safe apt-get -y install ${EXTRA_PKGS}
+	  delete_repos
+	END
+}
+
+
+## MMC Functions
+
+get_mmc_size()
+{
+	sfdisk -s /dev/mmcblk1
+}
+
+
+get_fat_size()
+{
+	MMC=$(get_mmc_size)
+
+	if [ $MMC -gt 7950000 ] ; then
+		FAT=$(expr $MMC - 2000000)
+	elif [ $MMC -gt 3950000 ] ; then
+		FAT=$(expr $MMC - 1500000)
+	elif [ $MMC -gt 1920000 ] ; then
+		FAT=$(expr $MMC - 1000000)
+	elif [ $MMC -gt 960000 ] ; then
+		FAT=$(expr $MMC - 500000)
+	else
+		FAIL "Your MMC card (${MMC}Mb) is not big enough for NITDroid. Sorry."
+	fi
+
+	echo ${FAT}
+}
+
+
+erase_block()
+{
+	quiet dd if=/dev/zero of=$1 bs=1k count=$2
+}
+
+
+try_erase()
+{
+	T=$3
+
+	until erase_block $1 $2
+	do
+		T=$(expr $T - 1)
+		test $T -gt 0 || return 1
+		sleep 1
+	done
+}
+
+
+unmount_ext_mmc()
+{
+	cat /proc/mounts | while read dev dir rest
+	do
+		case $dev in
+		    /dev/mmcblk1*) 
+			MSG "Unmounting $dev"
+			safe umount $dev
+			sync
+			END
+			;;
+		esac
+	done
+}
+
+
+mount_ext_mmc()
+{
+	test -d /and  || safe install -d -m 0700 /and
+	test -d /mmc  || safe install -d -m 0700 /mmc
+
+	MSG "Mounting mmcblk1p1"
+	  safe mount /dev/mmcblk1p1 /mmc -o ${DOSOPTS}
+	END
+
+	MSG "Mounting mmcblk1p2"
+	  safe mount /dev/mmcblk1p2 /and -o ${ANDOPTS}
+	END
+}
+
+
+format_ext_mmc()
+{
+	MMC=$(get_mmc_size)
+	FAT=$(get_fat_size)
+
+	MSG "Creating partitions"
+
+	  safe sfdisk -R /dev/mmcblk1
+
+	  safe sfdisk -uB /dev/mmcblk1 << EOM
+0,$FAT,C
+,,L
+,,
+,,
+EOM
+
+	  safe sfdisk -R /dev/mmcblk1
+	  sync
+	  sleep 5
+	  sync
+
+	END
+
+	echo
+	sfdisk -l /dev/mmcblk1 | egrep 'mmcblk1p[12]'
+	echo
+
+	MSG "Formatting /dev/mmcblk1p1"
+	  if try_erase /dev/mmcblk1p1 30 1k
+	  then
+		safe mkfs.vfat -n 'sdcard' /dev/mmcblk1p1
+		sync
+	  fi
+	END
+
+	MSG "Formatting /dev/mmcblk1p2"
+	  if try_erase /dev/mmcblk1p2 30 1k
+	  then
+		safe mkfs.ext3 -m0 -L 'NITDroid' /dev/mmcblk1p2
+		sync
+	  fi
+	END
+}
+
+
+## Package handling functions
+
+check_md5()
+{
+	echo "$2  $1" | quiet md5sum -c
+}
+
+
+download_file()
+{
+	name=${1##*/}
+	file=${PKGDIR}/${name}
+
+	MSG "Downloading $name"
+
+	test -d ${PKGDIR} || install -d -m 0755 ${PKGDIR}
+	test -f ${file}   && rm -f ${file}
+
+	case $1 in
+	  http:*)	safe wget -P ${PKGDIR} $1	;;
+	  file:*)	safe cp ${1##file://} ${PKGDIR} ;;
+	esac
+
+	END
+}
+
+
+download_files()
+{
+	LOG "\nGoing to download the installation files. This will take a rather long time!\n"
+
+	download_file ${MANIFEST_URL}
+
+	cat ${PKGDIR}/${MANIFEST} | egrep -v '(^#)|(^[ \t]*$)' | while read tag url sum
+	do
+		if [ -n "${sum}" ]
+		then
+			name=${url##*/}
+			file=${PKGDIR}/${name}
+
+			if [ -f ${file} ]
+			then
+				if ! check_md5 $file $sum
+				then
+					download_file $url
+				fi
+			else
+				download_file $url
+			fi
+
+			if ! check_md5 $file $sum
+			then
+				FAIL "MD5 checksum mismatch on ${name}"
+			fi
+		fi
+	done
+}
+
+
+extract_files()
+{
+	safe cd /and
+
+	cat ${PKGDIR}/${MANIFEST} | egrep '^rootfs' | while read tag url md5
+	do
+		FILE=${url##*/}
+		MSG "Extracting ${FILE}"
+		  cat ${PKGDIR}/${FILE} | bunzip2 | safe tar xv
+		END
+	done
+
+	cd /tmp
+}
+
+
+install_debs()
+{
+	cat ${PKGDIR}/${MANIFEST} | egrep "^$1" | while read tag url md5
+	do
+		FILE=${url##*/}
+		MSG "Installing ${FILE}"
+		  safe dpkg -i ${PKGDIR}/${FILE}
+		END
+	done
+}
+
+
+set_manifest()
+{
+	if [ -n "$1" ]
+	then
+		MANIFEST_URL="$1"
+		MANIFEST="${1##*/}"
+	fi
+}
+
+
+## Environment functions
+
+check_n900()
+{
+	# Maemo hostname is always 'Nokia-N900'
+	test $(hostname) = 'Nokia-N900'  || return 1
+
+	# Maemo has maemo-launcher
+	test -x /usr/bin/maemo-launcher  || return 1
+
+	return 0
+}
+
+
+check_root()
+{
+	test $(id -u) = '0'
+}
+
+
+## GUI Functions
+
+print_banner()
+{
+	if ! check_n900
+	then
+		echo "ERROR: this program is for N900 only!"
+		exit 1
+	fi
+
+	if ! check_root
+	then
+		echo "ERROR: You must be root to run this program!"
+		exit 1
+	fi
+
+cat << EOM
+
+**********************************************************
+*                                                        *
+* This installer will automatically download and install *
+*      NITDroid, an Android port to Nokia N900.          *
+*                                                        *
+*                       WARNING!                         *
+*    THIS PROGRAM WILL INSTALL APPS ONTO YOUR DEVICE     *
+*     AND FORMAT YOUR MICROSD WITHOUT ANY WARNINGS.      *
+*   THERE IS A SLIGHT RISK THAT THIS WILL RENDER YOUR    *
+*     DEVICE UNUSABLE, REQUIRING FULL MAEMO REFLASH.     *
+*                                                        *
+*      PLEASE BACKUP YOUR DATA BEFORE PROCEEDING         *
+*                                                        *
+*                 YOU HAVE BEEN WARNED                   *
+*                                                        *
+**********************************************************
+
+EOM
+
+	read -t 60 -p "Type 'YES' if you accept the terms and take the risk >> " msg
+
+	if [ "${msg}" = "YES" ]
+	then
+		echo -e "\nGood! Here we go.\n"
+	else
+		echo -e "\nYou did not type 'YES', so not doing anything. Bye.\n"
+		exit 1
+	fi
+}
+
+
+print_trailer()
+{
+cat << 'EOM'
+
+**********************************************************
+                   _____   ___   ___   ___      ___
+      |\   ||  /| /____/  |   \ |   \ |   \ /| |   \ 
+      | \  ||  ||   |     |   | |___/ |   | || |   |
+      || \ ||  ||   ||    ||  | ||\\  ||  | || ||  |
+      ||  \||  ||   ||    ||__/ || \\ ||__| || ||__/
+
+**********************************************************
+*                                                        *
+*           has been succesfully installed!              *
+*                                                        *
+*    You may now reboot the device with keyboard open    *
+*              to boot into NITDroid.                    *
+*                                                        *
+**********************************************************
+
+EOM
+}
+
+
+## MAIN
+
+print_banner
+
+INIT
+
+trap ERROR SIGINT
+trap ERROR SIGHUP
+
+set_manifest $1
+
+suspend_process ke-recv
+
+unmount_ext_mmc
+
+install_extras
+uninstall_crap
+
+unmount_ext_mmc
+format_ext_mmc
+mount_ext_mmc
+
+download_files
+
+extract_files
+install_debs package
+
+unmount_ext_mmc
+
+resume_process ke-recv
+
+print_trailer
+
+DONE
+
+## END.

@@ -1,0 +1,144 @@
+#!/bin/sh
+#
+# nitdroid-uninstaller		Uninstall NITdroid kernels and multiboot
+#
+
+VERSION=0.2
+
+
+## Functions
+
+is_and_mounted()
+{
+	cat /proc/mounts | fgrep -q '/and'
+}
+
+is_and_ok()
+{
+	is_and_mounted && test -d /and/system/etc
+}
+
+purge()
+{
+	for pkg
+	do
+		for path in /var/lib/dpkg/info/${pkg}*.list
+		do
+			if [ -f ${path} ]
+			then
+				file=${path##*/}
+				name=${file%%.list}
+
+				dpkg --purge $name
+			fi
+		done
+	done
+}
+
+
+## Check OK?
+
+if ! is_and_ok
+then
+	cat << EOM
+
+NITDroid partition is not mounted.
+Please mount it on /and and try again.
+
+E.g.	mount /dev/mmcblk1p2 /and -o noatime
+
+EOM
+
+	exit 1
+fi
+
+
+## Startup message
+
+cat << EOM
+
+nitdroid-uninstaller v${VERSION}
+
+This will delete all traces of NITdroid kernels and multiboot,
+including the item files in /etc/multiboot.d/
+
+Type 'YES' to continue
+
+EOM
+
+read ans
+
+if [ "$ans" != "YES" ]
+then
+	echo "OK not doing anything."
+	exit 1
+fi
+
+
+## Remove old kernels
+
+for list in /var/lib/dpkg/info/nitdroid-kernel-*.list
+do
+	if [ -f $list ]
+	then
+		pkg=${list##*/nitdroid-kernel-}
+		ver=${pkg%%.list}
+
+		echo "Removing deb package nitdroid-kernel-$ver"
+
+		dpkg --purge nitdroid-kernel-$ver
+	fi
+done
+
+
+## Remove manual kernels
+
+for mod in /lib/modules/2.6.28.NIT.*
+do
+	if [ -d $mod ]
+	then
+		ver=${mod##*/}
+
+		echo "Removing manual nitdroid-kernel-$ver"
+
+		rm -f /boot/vmlinuz-$ver
+		rm -f /boot/multiboot/vmlinuz-$ver
+		rm -f -r $mod
+	fi
+done
+
+
+## Remove multiboot
+
+purge multiboot-kernel-maemo 
+purge multiboot-kernel-power
+
+purge multiboot
+purge multiboot-extras
+
+
+## Remove any leftover files
+
+if [ -d /etc/multiboot.d ]
+then
+	echo "Removing /etc/multiboot.d"
+	rm -f -r /etc/multiboot.d
+fi
+
+for file in /sbin/preinit[._]* /sbin/multiboot[._]*
+do
+	if [ -f $file ]
+	then
+		echo "Removing $file"
+		rm -f $file
+	fi
+done
+
+
+cat << EOM
+
+NITdroid kernels and multiboot succesfully uninstalled.
+
+EOM
+
+exit 0

@@ -1,0 +1,65 @@
+#!/usr/bin/make -f
+
+TARGET := $(CURDIR)/debian/nitdroid-installer
+
+
+configure: configure-stamp
+configure-stamp:
+	dh_testdir
+	touch configure-stamp
+
+
+build: build-stamp
+build-stamp: configure-stamp 
+	dh_testdir
+	touch $@
+
+
+binary: binary-indep binary-arch
+
+# Build architecture-independent files here.
+binary-indep: build install
+
+# Build architecture-dependent files here.
+binary-arch: build install
+	dh_testdir
+	dh_testroot
+	dh_installchangelogs 
+	dh_installdocs
+	dh_installexamples
+	dh_installman
+	dh_link
+	dh_strip
+	dh_compress
+	dh_fixperms
+	dh_installdeb
+	dh_shlibdeps
+	dh_gencontrol
+	dh_md5sums
+	dh_builddeb
+
+
+install: build
+	dh_testdir
+	dh_testroot
+	dh_clean -k
+	dh_installdirs
+	install -m 0755 -o root -g root -d $(TARGET)/usr/bin
+	install -m 0755 -o root -g root -d $(TARGET)/etc/sudoers.d
+	install -m 0644 -o root -g root $(CURDIR)/config/nitdroid-installer.sudoers $(TARGET)/etc/sudoers.d/
+	install -m 0755 -o root -g root $(CURDIR)/scripts/nitdroid $(TARGET)/usr/bin/
+	install -m 0755 -o root -g root $(CURDIR)/scripts/nitdroid-installer $(TARGET)/usr/bin/
+	install -m 0755 -o root -g root $(CURDIR)/scripts/nitdroid-uninstaller $(TARGET)/usr/bin/
+	
+
+
+clean:
+	dh_testdir
+	dh_testroot
+	dh_clean
+	rm -f build-stamp configure-stamp
+
+
+
+.PHONY: build clean binary-indep binary-arch binary install configure
+
