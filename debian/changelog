@@ -1,3 +1,12 @@
+nitdroid-installer (0.2.3) unstable; urgency=low
+
+  * A few changes:
+    - 'nitdroid' works as root
+    - uninstall deletes downloaded packages
+    - installer does not install extra packages
+
+ -- Jay Cartman <jay.cartman@gmail.com>  Sat, 14 Aug 2010 14:42:11 +0100
+
 nitdroid-installer (0.2.2) unstable; urgency=low
 
   * Initial Release in .deb
