@@ -1,2 +1,7 @@
 #!/bin/sh
-exec sudo nitdroid-installer "$@"
+if [ $(id -u) = 0 ]
+then
+	exec nitdroid-installer "$@"
+else
+	exec sudo nitdroid-installer "$@"
+fi
