@@ -556,7 +556,7 @@ suspend_process ke-recv
 
 unmount_ext_mmc
 
-install_extras
+##install_extras
 uninstall_crap
 
 unmount_ext_mmc
