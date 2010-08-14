@@ -1,0 +1,29 @@
+#!/bin/sh
+
+remove()
+{
+	if [ -d /home/user/MyDocs/.nitdroid ]
+	then
+		echo "Deleting leftover NITdroid packages in Maemo..."
+		rm -f -r /home/user/MyDocs/.nitdroid
+	fi
+
+	return 0
+}
+
+
+case "$1" in
+
+    remove)
+	remove
+	;;
+
+    upgrade|failed-upgrade|deconfigure)
+	;;
+
+    *)
+	echo "prerm called with unhandled argument $1" >&2
+	exit 1
+	;;
+esac
+
