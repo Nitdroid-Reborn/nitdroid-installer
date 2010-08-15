@@ -36,10 +36,14 @@ LOG_FILE='/root/nitdroid-installer.log'
 INIT()
 {
 	exec 5>$LOG_FILE
+
 	echo -e "\n*** NITDroid installer ${VER} on $(date)\n" >&5
+
+	trap ERROR SIGINT
+	trap ERROR SIGHUP
 }
 
-DONE()
+EXIT()
 {
 	exec 5>&-
 	exit 0
@@ -65,27 +69,27 @@ ERROR()
 
 FAIL()
 {
-	echo "!!! FAILURE ($?) [$@]" >&5
-	echo "FAILURE. Bailing out."
+	echo "!!!" "$@" >&5
+	echo "FAILURE. Bailing out." >&2
 	ERROR
-}
-
-LOG()
-{
-	echo "=== $@" >&5
-	echo -e "$@"
 }
 
 MSG()
 {
-	echo "*** $@" >&5
-	echo -n -e "$@" "..."
+	echo "***" "$@" >&5
+	echo -ne "$@" "..." >&2
 }
 
 END()
 {
 	echo "*** DONE" >&5
-	echo "done"
+	echo "done" >&2
+}
+
+LOG()
+{
+	echo "===" "$@" >&5
+	echo -e "$@"  >&2
 }
 
 RUN()
@@ -96,7 +100,7 @@ RUN()
 safe()
 {
 	echo "--- RUN [$@]" >&5
-	RUN "$@" || FAIL "$@"
+	RUN "$@" || FAIL "ERROR:$?" "$@"
 }
 
 quiet()
@@ -192,8 +196,8 @@ uninstall_crap()
 	END
 
 	MSG "Removing lingering files"
-	  safe rm -f /etc/multiboot.d/*.item
-	  safe rm -f /sbin/multiboot[._]* /sbin/preinit[._]*
+	  quiet rm -f /etc/multiboot.d/*.item
+	  quiet rm -f /sbin/multiboot[._]* /sbin/preinit[._]*
 	END
 
 	done_fake_and
@@ -280,7 +284,7 @@ unmount_ext_mmc()
 	cat /proc/mounts | while read dev dir rest
 	do
 		case $dev in
-		    /dev/mmcblk1*) 
+		    /dev/mmcblk1*)
 			MSG "Unmounting $dev"
 			safe umount $dev
 			sync
@@ -418,7 +422,7 @@ extract_files()
 	do
 		FILE=${url##*/}
 		MSG "Extracting ${FILE}"
-		  cat ${PKGDIR}/${FILE} | bunzip2 | safe tar xv
+		  safe cat ${PKGDIR}/${FILE} | bunzip2 | safe tar xv
 		END
 	done
 
@@ -547,9 +551,6 @@ print_banner
 
 INIT
 
-trap ERROR SIGINT
-trap ERROR SIGHUP
-
 set_manifest $1
 
 suspend_process ke-recv
@@ -574,6 +575,6 @@ resume_process ke-recv
 
 print_trailer
 
-DONE
+EXIT
 
 ## END.
