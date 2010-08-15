@@ -8,7 +8,7 @@
 ## Config
 
 # Version
-VER=0.2.0
+VER=0.2.4
 
 # Nitdroid manifest file
 MANIFEST=nitdroid_manifest.nit
