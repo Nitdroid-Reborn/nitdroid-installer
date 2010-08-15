@@ -456,11 +456,11 @@ set_manifest()
 
 check_n900()
 {
-	# Maemo hostname is always 'Nokia-N900'
-	test $(hostname) = 'Nokia-N900'  || return 1
+	# Maemo has osso-product-info
+	test -x /usr/bin/osso-product-info  || return 1
 
-	# Maemo has maemo-launcher
-	test -x /usr/bin/maemo-launcher  || return 1
+	# HW must be RX-51
+	test $( osso-product-info | fgrep 'HARDWARE' | cut -f2 -d'=' ) = "'RX-51'"  || return 1
 
 	return 0
 }
