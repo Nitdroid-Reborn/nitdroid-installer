@@ -28,7 +28,7 @@ APT_LIST='/etc/apt/sources.list.d/nitdroid-installer.list'
 EXTRA_PKGS='bzip2 wget nano'
 
 # Verbose log file
-LOG_FILE='/root/nitdroid-installer.log'
+LOG_FILE="${PKGDIR}/installer.log"
 
 
 ## Logging Functions
