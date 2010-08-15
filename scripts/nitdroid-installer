@@ -41,19 +41,14 @@ INIT()
 
 	trap ERROR SIGINT
 	trap ERROR SIGHUP
-}
+	trap ERROR SIGQUIT
 
-EXIT()
-{
-	exec 5>&-
-	exit 0
+	set -e
 }
 
 ERROR()
 {
 	echo "*** ERROR - CLEANING UP THE CRAP" >&5
-
-	exec 5>&-
 
 	quiet umount /and
 	quiet umount /mmc
@@ -286,8 +281,8 @@ unmount_ext_mmc()
 		case $dev in
 		    /dev/mmcblk1*)
 			MSG "Unmounting $dev"
-			safe umount $dev
-			sync
+			  safe umount $dev
+			  sync
 			END
 			;;
 		esac
@@ -575,6 +570,6 @@ resume_process ke-recv
 
 print_trailer
 
-EXIT
+exit 0
 
 ## END.
