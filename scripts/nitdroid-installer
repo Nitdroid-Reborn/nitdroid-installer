@@ -422,7 +422,7 @@ extract_files()
 	do
 		FILE=${url##*/}
 		MSG "Extracting ${FILE}"
-		  safe cat ${PKGDIR}/${FILE} | bunzip2 | safe tar xv
+		  cat ${PKGDIR}/${FILE} | bunzip2 | safe tar xv
 		END
 	done
 
