@@ -8,6 +8,12 @@ remove()
 		rm -f -r /home/user/MyDocs/.nitdroid
 	fi
 
+	if [ -f /root/nitdroid-installer.log ]
+	then
+		echo "Deleting installer log file..."
+		rm -f /root/nitdroid-installer.log
+	fi
+
 	return 0
 }
 
