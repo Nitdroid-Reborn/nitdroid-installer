@@ -35,6 +35,8 @@ LOG_FILE="${PKGDIR}/installer.log"
 
 INIT()
 {
+	test -d ${PKGDIR} || mkdir -p -m 0755 ${PKGDIR}
+
 	exec 5>$LOG_FILE
 
 	echo -e "\n*** NITDroid installer ${VER} on $(date)\n" >&5
@@ -365,7 +367,6 @@ download_file()
 
 	MSG "Downloading $name"
 
-	test -d ${PKGDIR} || install -d -m 0755 ${PKGDIR}
 	test -f ${file}   && rm -f ${file}
 
 	case $1 in
