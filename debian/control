@@ -7,10 +7,16 @@ Standards-Version: 3.7.2
 
 Package: nitdroid-installer
 Architecture: armel
-Depends: wget, bzip2
+Depends: rootsh (>= 1.8), getbootstate (>= 1.0.39+0m5), multiboot (>= 0.2.10), multiboot-kernel-maemo (>= 0.3), wget, bzip2
 Conflicts: bootmenu, bootmenu-n900
 Description: Install NITDroid, an Android port to N900
- This package is an installer program for downloading 
+ This package is an installer program for downloading
  and installing NITDroid, an Android port to N900.
+ .
+ To start the automatic installation, please click 
+ 'NITDroid installer' in the applications screen.
+ .
+ For manual installation, please start an xterm console
+ and type 'nitdroid', and follow the instructions.
 XB-Maemo-Display-Name: NITDroid installer
 XB-Maemo-Flags: system-update

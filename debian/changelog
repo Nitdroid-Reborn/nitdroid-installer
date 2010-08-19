@@ -1,3 +1,18 @@
+nitdroid-installer (0.2.6) unstable; urgency=low
+
+  * A few changes:
+    - manifest file fetched from downloads.nitdroid.com
+    - command line options added
+        --no-format
+        --no-purge
+        --android-dev=
+    - 'extra' package installation removed
+    - new manifest keyword 'install'
+    - added support for 512Mb cards
+    - improvements on nitdroid-uninstaller
+
+ -- Jay Cartman <jay.cartman@gmail.com>  Thu, 19 Aug 2010 13:45:34 +0100
+
 nitdroid-installer (0.2.5) unstable; urgency=low
 
   * Download directory created earlier
