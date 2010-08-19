@@ -1,1 +1,2 @@
 user ALL = NOPASSWD: /usr/bin/nitdroid-installer
+user ALL = NOPASSWD: /usr/bin/nitdroid-uninstaller
