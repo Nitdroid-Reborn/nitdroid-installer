@@ -8,24 +8,26 @@
 ## Config
 
 # Version
-VER=0.2.4
+VER=0.2.6
 
 # Nitdroid manifest file
-MANIFEST=nitdroid_manifest.nit
-MANIFEST_URL=http://repo.nitdroid.com/${MANIFEST}
+MANIFEST_FILE=nitdroid.manifest
+MANIFEST_URL=http://downloads.nitdroid.com/nitinstaller/${MANIFEST_FILE}
+
+# Root device
+ROOT_DEV='/dev/mmcblk1p2'
 
 # Filesystem options
-ANDOPTS='rw,noatime,errors=remount-ro'
-DOSOPTS='rw,noauto,nodev,noexec,nosuid,noatime,nodiratime,utf8,uid=29999,shortname=mixed,dmask=000,fmask=0133,rodir'
+ROOT_OPTS='rw,noatime,errors=remount-ro'
+
+# Options
+FDISK_MMC='TRUE'
+FORMAT_VFAT='TRUE'
+FORMAT_ROOT='TRUE'
+PURGE_KERNELS='TRUE'
 
 # Package storage
 PKGDIR='/home/user/MyDocs/.nitdroid'
-
-# APT source list
-APT_LIST='/etc/apt/sources.list.d/nitdroid-installer.list'
-
-# Extra packages
-EXTRA_PKGS='bzip2 wget nano'
 
 # Verbose log file
 LOG_FILE="${PKGDIR}/installer.log"
@@ -35,17 +37,21 @@ LOG_FILE="${PKGDIR}/installer.log"
 
 INIT()
 {
+	set -e
+
+	trap ERROR SIGINT
+	trap ERROR SIGHUP
+	trap ERROR SIGQUIT
+
 	test -d ${PKGDIR} || mkdir -p -m 0755 ${PKGDIR}
 
 	exec 5>$LOG_FILE
 
 	echo -e "\n*** NITDroid installer ${VER} on $(date)\n" >&5
 
-	trap ERROR SIGINT
-	trap ERROR SIGHUP
-	trap ERROR SIGQUIT
-
-	set -e
+	safe uname -a
+	safe sfdisk -l
+	safe df -h
 }
 
 ERROR()
@@ -53,13 +59,8 @@ ERROR()
 	echo "*** ERROR - CLEANING UP THE CRAP" >&5
 
 	quiet umount /and
-	quiet umount /mmc
-
-	quiet dpkg -r multiboot
 
 	quiet resume_process ke-recv
-
-	rm -f ${APT_LIST}
 
 	exit 1
 }
@@ -98,6 +99,7 @@ safe()
 {
 	echo "--- RUN [$@]" >&5
 	RUN "$@" || FAIL "ERROR:$?" "$@"
+	echo "--- END [$@]" >&5
 }
 
 quiet()
@@ -148,84 +150,44 @@ uninstall_crap()
 	MSG "Uninstalling any incompatible software"
 	  safe dpkg --purge bootmenu
 	  safe dpkg --purge bootmenu-n900
+	  safe dpkg --purge multiboot-extras
 	END
 
 	## Remove old kernels
 
-	init_fake_and
+	if [ X${PURGE_KERNELS} = XTRUE ]
+	then
+		init_fake_and
 
-	for list in /var/lib/dpkg/info/nitdroid-kernel-*.list
-	do
-		if [ -f $list ]
-		then
-			pkg=${list##*/nitdroid-kernel-}
-			ver=${pkg%%.list}
+		for list in /var/lib/dpkg/info/nitdroid-kernel-*.list
+		do
+			if [ -f $list ]
+			then
+				pkg=${list##*/nitdroid-kernel-}
+				ver=${pkg%%.list}
 
-			MSG "Uninstalling kernel $ver"
-			  safe dpkg --purge nitdroid-kernel-$ver
-			END
-        	fi
-	done
+				MSG "Uninstalling kernel $ver"
+				  safe dpkg --purge nitdroid-kernel-$ver
+				END
+        		fi
+		done
 
-	## Remove manual kernels
+		for mod in /lib/modules/2.6.28.NIT.*
+		do
+			if [ -d $mod ]
+			then
+				ver=${mod##*/}
 
-	for mod in /lib/modules/2.6.28.NIT.*
-	do
-		if [ -d $mod ]
-		then
-			ver=${mod##*/}
+                		MSG "Removing manual kernel $ver"
+				  rm -f /boot/vmlinuz-$ver
+				  rm -f /boot/multiboot/vmlinuz-$ver
+				  rm -f -r $mod
+				END
+			fi
+        	done
 
-                	MSG "Removing manual kernel $ver"
-			  rm -f /boot/vmlinuz-$ver 
-                	  rm -f /boot/multiboot/vmlinuz-$ver
-                	  rm -f -r $mod
-			END
-		fi
-        done
-
-	## Remove multiboot
-
-	MSG "Removing multiboot"
-	  safe dpkg --purge multiboot-kernel-maemo
-	  safe dpkg --purge multiboot-kernel-power
-	  safe dpkg --purge multiboot
-	  safe dpkg --purge multiboot-extras
-	END
-
-	MSG "Removing lingering files"
-	  quiet rm -f /etc/multiboot.d/*.item
-	  quiet rm -f /sbin/multiboot[._]* /sbin/preinit[._]*
-	END
-
-	done_fake_and
-}
-
-
-## Maemo repo functions
-
-install_repos()
-{
-	echo "deb http://repository.maemo.org/extras/ fremantle free non-free" > $APT_LIST
-	echo "deb http://repository.maemo.org/extras-devel/ fremantle free non-free" >> $APT_LIST
-	echo "deb http://repository.maemo.org/extras-testing/ fremantle free non-free" >> $APT_LIST
-
-	safe apt-get update
-}
-
-
-delete_repos()
-{
-	rm -f $APT_LIST
-}
-
-
-install_extras()
-{
-	MSG "Installing Maemo extras"
-	  install_repos
-	  safe apt-get -y install ${EXTRA_PKGS}
-	  delete_repos
-	END
+		done_fake_and
+	fi
 }
 
 
@@ -241,16 +203,16 @@ get_fat_size()
 {
 	MMC=$(get_mmc_size)
 
-	if [ $MMC -gt 7950000 ] ; then
+	if [ $MMC -gt 3840000 ] ; then
 		FAT=$(expr $MMC - 2000000)
-	elif [ $MMC -gt 3950000 ] ; then
-		FAT=$(expr $MMC - 1500000)
 	elif [ $MMC -gt 1920000 ] ; then
 		FAT=$(expr $MMC - 1000000)
 	elif [ $MMC -gt 960000 ] ; then
 		FAT=$(expr $MMC - 500000)
+	elif [ $MMC -gt 480000 ] ; then
+		FAT=$(expr $MMC - 250000)
 	else
-		FAIL "Your MMC card (${MMC}Mb) is not big enough for NITDroid. Sorry."
+		FAIL "Your MMC card (${MMC}kb) is not big enough for NITDroid. Sorry."
 	fi
 
 	echo ${FAT}
@@ -292,62 +254,72 @@ unmount_ext_mmc()
 }
 
 
-mount_ext_mmc()
+fdisk_ext_mmc()
 {
-	test -d /and  || safe install -d -m 0700 /and
-	test -d /mmc  || safe install -d -m 0700 /mmc
+	if [ X${FDISK_MMC} = XTRUE ]
+	then
+		MMC=$(get_mmc_size)
+		FAT=$(get_fat_size)
 
-	MSG "Mounting mmcblk1p1"
-	  safe mount /dev/mmcblk1p1 /mmc -o ${DOSOPTS}
-	END
+		MSG "Creating partitions"
 
-	MSG "Mounting mmcblk1p2"
-	  safe mount /dev/mmcblk1p2 /and -o ${ANDOPTS}
-	END
-}
+		  safe sfdisk -R /dev/mmcblk1
 
-
-format_ext_mmc()
-{
-	MMC=$(get_mmc_size)
-	FAT=$(get_fat_size)
-
-	MSG "Creating partitions"
-
-	  safe sfdisk -R /dev/mmcblk1
-
-	  safe sfdisk -uB /dev/mmcblk1 << EOM
+		  safe sfdisk -uB /dev/mmcblk1 << EOM
 0,$FAT,C
 ,,L
 ,,
 ,,
 EOM
 
-	  safe sfdisk -R /dev/mmcblk1
-	  sync
-	  sleep 5
-	  sync
+		  sync
+		  safe sfdisk -R /dev/mmcblk1
+		  sleep 5
+		  sync
 
-	END
+		END
+	else
+		LOG "Using existing partitions"
+	fi
 
 	echo
-	sfdisk -l /dev/mmcblk1 | egrep 'mmcblk1p[12]'
+	sfdisk -l /dev/mmcblk1 | grep 'mmcblk1p'
 	echo
+}
 
-	MSG "Formatting /dev/mmcblk1p1"
-	  if try_erase /dev/mmcblk1p1 30 1k
-	  then
-		safe mkfs.vfat -n 'sdcard' /dev/mmcblk1p1
-		sync
-	  fi
-	END
 
-	MSG "Formatting /dev/mmcblk1p2"
-	  if try_erase /dev/mmcblk1p2 30 1k
-	  then
-		safe mkfs.ext3 -m0 -L 'NITDroid' /dev/mmcblk1p2
-		sync
-	  fi
+format_ext_mmc()
+{
+	if [ X${FORMAT_VFAT} = XTRUE ]
+	then
+		MSG "Formatting /dev/mmcblk1p1 (vfat)"
+		  if try_erase /dev/mmcblk1p1 30 1k
+		  then
+			safe mkfs.vfat -n 'sdcard' /dev/mmcblk1p1
+			sync
+		  fi
+		END
+	fi
+
+	if [ X${FORMAT_ROOT} = XTRUE ]
+	then
+		MSG "Formatting ${ROOT_DEV} (ext3)"
+		  if try_erase ${ROOT_DEV} 30 1k
+		  then
+			safe mkfs.ext3 -m0 -L 'NITDroid' ${ROOT_DEV}
+			sync
+		  fi
+		END
+	fi
+}
+
+
+mount_root_dev()
+{
+	test -d /and  || safe install -d -m 0700 /and
+
+	MSG "Mounting ${ROOT_DEV}"
+	  safe mount ${ROOT_DEV} /and -o ${ROOT_OPTS}
 	END
 }
 
@@ -384,7 +356,7 @@ download_files()
 
 	download_file ${MANIFEST_URL}
 
-	cat ${PKGDIR}/${MANIFEST} | egrep -v '(^#)|(^[ \t]*$)' | while read tag url sum
+	cat ${PKGDIR}/${MANIFEST_FILE} | egrep -v '(^#)|(^[ \t]*$)' | while read tag url sum
 	do
 		if [ -n "${sum}" ]
 		then
@@ -414,7 +386,7 @@ extract_files()
 {
 	safe cd /and
 
-	cat ${PKGDIR}/${MANIFEST} | egrep '^rootfs' | while read tag url md5
+	cat ${PKGDIR}/${MANIFEST_FILE} | egrep '^rootfs' | while read tag url md5
 	do
 		FILE=${url##*/}
 		MSG "Extracting ${FILE}"
@@ -428,7 +400,9 @@ extract_files()
 
 install_debs()
 {
-	cat ${PKGDIR}/${MANIFEST} | egrep "^$1" | while read tag url md5
+	local tag url md5
+
+	cat ${PKGDIR}/${MANIFEST_FILE} | egrep "^package" | while read tag url md5
 	do
 		FILE=${url##*/}
 		MSG "Installing ${FILE}"
@@ -438,13 +412,16 @@ install_debs()
 }
 
 
-set_manifest()
+install_apts()
 {
-	if [ -n "$1" ]
-	then
-		MANIFEST_URL="$1"
-		MANIFEST="${1##*/}"
-	fi
+	local tag name
+
+	cat ${PKGDIR}/${MANIFEST_FILE} | egrep "^install" | while read tag name
+	do
+		MSG "Installing ${name}"
+		  safe apt-get -y install ${name}
+		END
+	done
 }
 
 
@@ -465,6 +442,41 @@ check_n900()
 check_root()
 {
 	test $(id -u) = '0'
+}
+
+
+get_opts()
+{
+	local opt
+
+	for opt
+	do
+		case "${opt}" in
+
+		  --no-format)
+		  	FORMAT_ROOT=FALSE
+			;;
+
+		  --no-purge)
+			PURGE_KERNELS=FALSE
+			;;
+
+		  --android-dev=*)
+		  	ROOT_DEV=${opt##*=}
+			FDISK_MMC=FALSE
+			FORMAT_VFAT=FALSE
+			;;
+
+		  http:*|file:*)
+			MANIFEST_URL="${opt}"
+			MANIFEST_FILE="${opt##*/}"
+			;;
+
+		  *)
+		  	FAIL "Don't understand '${opt}'"
+			;;
+		esac
+	done
 }
 
 
@@ -505,13 +517,13 @@ cat << EOM
 
 EOM
 
-	read -t 60 -p "Type 'YES' if you accept the terms and take the risk >> " msg
+	read -t 60 -p "Type 'YES' if you accept the terms and take the risk >" msg
 
 	if [ "${msg}" = "YES" ]
 	then
 		echo -e "\nGood! Here we go.\n"
 	else
-		echo -e "\nYou did not type 'YES', so not doing anything. Bye.\n"
+		echo -e "\nYou typed '${msg}' instead of 'YES', so not doing anything. Bye.\n"
 		exit 1
 	fi
 }
@@ -547,23 +559,24 @@ print_banner
 
 INIT
 
-set_manifest $1
+get_opts "$@"
 
 suspend_process ke-recv
 
 unmount_ext_mmc
 
-##install_extras
 uninstall_crap
 
 unmount_ext_mmc
 format_ext_mmc
-mount_ext_mmc
 
 download_files
 
+mount_root_dev
+
 extract_files
-install_debs package
+install_debs
+install_apts
 
 unmount_ext_mmc
 
