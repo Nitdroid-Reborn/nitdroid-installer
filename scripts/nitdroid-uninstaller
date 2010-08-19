@@ -2,53 +2,39 @@
 #
 # nitdroid-uninstaller		Uninstall NITdroid kernels and multiboot
 #
+#	Copyright (c) 2010  Jay Cartman <jay.cartman@gmail.com>
+#
 
-VERSION=0.2
+VERSION=0.3
 
 
 ## Functions
 
-is_and_mounted()
+init_fake_and()
 {
-	cat /proc/mounts | fgrep -q '/and'
+	install -d -m 0700 /and
+	mount -t tmpfs -o rw,nosuid,noatime,size=256k,mode=755 tmpfs /and
+	install -d /and/system/etc
 }
 
-is_and_ok()
+done_fake_and()
 {
-	is_and_mounted && test -d /and/system/etc
+	umount /and
 }
+
 
 purge()
 {
-	for pkg
-	do
-		for path in /var/lib/dpkg/info/${pkg}*.list
-		do
-			if [ -f ${path} ]
-			then
-				file=${path##*/}
-				name=${file%%.list}
-
-				dpkg --purge $name
-			fi
-		done
-	done
+	apt-get -y purge "$@"
 }
 
 
 ## Check OK?
 
-if ! is_and_ok
+if [ $(id -u) != '0' ]
 then
-	cat << EOM
-
-NITDroid partition is not mounted.
-Please mount it on /and and try again.
-
-E.g.	mount /dev/mmcblk1p2 /and -o noatime
-
-EOM
-
+	echo "You must be root to run this program."
+	echo "Type 'root' to become root and try again"
 	exit 1
 fi
 
@@ -57,22 +43,38 @@ fi
 
 cat << EOM
 
-nitdroid-uninstaller v${VERSION}
-
-This will delete all traces of NITdroid kernels and multiboot,
-including the item files in /etc/multiboot.d/
-
-Type 'YES' to continue
+**********************************************************
+*                                                        *
+* This uninstaller will automatically REMOVE NITDroid    *
+*          and Multiboot from your device.               *
+*                                                        *
+*                       WARNING!                         *
+*    THIS PROGRAM WILL REMOVE APPLICATIONS AND FILES     *
+*        FROM YOUR DEVICE WITHOUT ANY WARNINGS.          *
+*   THERE IS A SLIGHT RISK THAT THIS WILL RENDER YOUR    *
+*     DEVICE UNUSABLE, REQUIRING FULL MAEMO REFLASH.     *
+*                                                        *
+*      PLEASE BACKUP YOUR DATA BEFORE PROCEEDING         *
+*                                                        *
+*                 YOU HAVE BEEN WARNED                   *
+*                                                        *
+**********************************************************
 
 EOM
 
-read ans
+read -t 60 -p "Type 'YES' to continue >" ans
 
-if [ "$ans" != "YES" ]
+if [ "${ans}" != "YES" ]
 then
-	echo "OK not doing anything."
+	echo "You typed '${ans}' instead of 'YES'"
+	echo "OK - not doing anything."
 	exit 1
 fi
+
+
+## Init fake /and partition - won't touch the real MMC
+
+init_fake_and
 
 
 ## Remove old kernels
@@ -84,9 +86,9 @@ do
 		pkg=${list##*/nitdroid-kernel-}
 		ver=${pkg%%.list}
 
-		echo "Removing deb package nitdroid-kernel-$ver"
+		echo "Removing package nitdroid-kernel-$ver"
 
-		dpkg --purge nitdroid-kernel-$ver
+		purge nitdroid-kernel-$ver
 	fi
 done
 
@@ -99,7 +101,7 @@ do
 	then
 		ver=${mod##*/}
 
-		echo "Removing manual nitdroid-kernel-$ver"
+		echo "Removing manually installed nitdroid-kernel-$ver"
 
 		rm -f /boot/vmlinuz-$ver
 		rm -f /boot/multiboot/vmlinuz-$ver
@@ -115,6 +117,8 @@ purge multiboot-kernel-power
 
 purge multiboot
 purge multiboot-extras
+
+purge nitdroid-installer
 
 
 ## Remove any leftover files
@@ -135,10 +139,30 @@ do
 done
 
 
-cat << EOM
+## Done
 
-NITdroid kernels and multiboot succesfully uninstalled.
+done_fake_and
+
+
+cat << 'EOM'
+
+**********************************************************
+                   _____   ___   ___   ___      ___
+      |\   ||  /| /____/  |   \ |   \ |   \ /| |   \ 
+      | \  ||  ||   |     |   | |___/ |   | || |   |
+      || \ ||  ||   ||    ||  | ||\\  ||  | || ||  |
+      ||  \||  ||   ||    ||__/ || \\ ||__| || ||__/
+
+**********************************************************
+*                                                        *
+*           has been succesfully REMOVED!                *
+*                                                        *
+*    You may now format your MicroSD card to remove the  *
+*                NITDroid partitions.                    *
+*                                                        *
+**********************************************************
 
 EOM
+
 
 exit 0
