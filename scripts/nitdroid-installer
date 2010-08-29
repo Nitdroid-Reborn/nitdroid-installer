@@ -8,7 +8,7 @@
 ## Config
 
 # Version
-VER=0.2.6
+VER=0.2.7
 
 # Nitdroid manifest file
 MANIFEST_FILE=nitdroid.manifest
@@ -263,7 +263,11 @@ fdisk_ext_mmc()
 
 		MSG "Creating partitions"
 
+		  erase_block /dev/mmcblk1 128
+		  sync
+
 		  safe sfdisk -R /dev/mmcblk1
+		  sleep 1
 
 		  safe sfdisk -uB /dev/mmcblk1 << EOM
 0,$FAT,C
@@ -273,6 +277,7 @@ fdisk_ext_mmc()
 EOM
 
 		  sync
+
 		  safe sfdisk -R /dev/mmcblk1
 		  sleep 5
 		  sync
@@ -320,6 +325,14 @@ mount_root_dev()
 
 	MSG "Mounting ${ROOT_DEV}"
 	  safe mount ${ROOT_DEV} /and -o ${ROOT_OPTS}
+	END
+}
+
+
+unmount_root_dev()
+{
+	MSG "Unmounting ${ROOT_DEV}"
+	  safe umount /and
 	END
 }
 
@@ -453,8 +466,15 @@ get_opts()
 	do
 		case "${opt}" in
 
+		  --no-fdisk)
+			FDISK_MMC=FALSE
+			FORMAT_VFAT=FALSE
+			;;
+
 		  --no-format)
-		  	FORMAT_ROOT=FALSE
+			FDISK_MMC=FALSE
+			FORMAT_VFAT=FALSE
+			FORMAT_ROOT=FALSE
 			;;
 
 		  --no-purge)
@@ -462,7 +482,7 @@ get_opts()
 			;;
 
 		  --android-dev=*)
-		  	ROOT_DEV=${opt##*=}
+			ROOT_DEV=${opt##*=}
 			FDISK_MMC=FALSE
 			FORMAT_VFAT=FALSE
 			;;
@@ -473,7 +493,8 @@ get_opts()
 			;;
 
 		  *)
-		  	FAIL "Don't understand '${opt}'"
+			LOG  "Don't understand option '${opt}'"
+			ERROR
 			;;
 		esac
 	done
@@ -565,12 +586,12 @@ suspend_process ke-recv
 
 unmount_ext_mmc
 
+download_files
+
 uninstall_crap
 
-unmount_ext_mmc
+fdisk_ext_mmc
 format_ext_mmc
-
-download_files
 
 mount_root_dev
 
@@ -578,7 +599,7 @@ extract_files
 install_debs
 install_apts
 
-unmount_ext_mmc
+unmount_root_dev
 
 resume_process ke-recv
 
